@@ -1,0 +1,64 @@
+datasource db {
+	provider = "postgresql"
+	url      = env("DATABASE_URL")
+}
+
+generator client {
+	provider = "prisma-client-js"
+}
+
+enum Role {
+  MEMBER
+  MEDIA
+  ADMIN
+}
+
+model Profile {
+  id        String   @id
+  email     String   @unique
+  fullName  String
+  createdAt DateTime @default(now())
+
+  roles        UserRole[]
+  entitlements Entitlement[]
+}
+
+model UserRole {
+  id        String @id @default(cuid())
+  profileId String
+  role      Role
+
+  profile Profile @relation(fields: [profileId], references: [id])
+
+  @@unique([profileId, role])
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  title     String
+  startTime DateTime
+  isPublic  Boolean  @default(false)
+
+  accessCodes  AccessCode[]
+  entitlements Entitlement[]
+}
+
+model AccessCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  eventId   String
+  expiresAt DateTime?
+
+  event Event @relation(fields: [eventId], references: [id])
+}
+
+model Entitlement {
+  id        String @id @default(cuid())
+  profileId String
+  eventId   String
+
+  profile Profile @relation(fields: [profileId], references: [id])
+  event   Event   @relation(fields: [eventId], references: [id])
+
+  @@unique([profileId, eventId])
+}
