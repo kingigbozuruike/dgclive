@@ -7,67 +7,148 @@ import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Logo } from "../components/logo"
-import { Check, Mail, Lock, Key, Eye, EyeOff, User } from "lucide-react"
+import { Check, Mail, Lock, Eye, EyeOff, User, AlertCircle } from "lucide-react"
 import BokehDots from "../components/BokehDots"
+
+type SignupStep = "form" | "verification" | "error"
 
 export default function AuthPage() {
 	const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin")
+	const [signupStep, setSignupStep] = useState<SignupStep>("form")
 	const router = useRouter()
 	const [isLoading, setIsLoading] = useState(false)
 	const [showPassword, setShowPassword] = useState(false)
+	const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+	const [errorMessage, setErrorMessage] = useState("")
+	const [showErrorModal, setShowErrorModal] = useState(false)
+	const [pendingEmail, setPendingEmail] = useState("")
 
 	const [formData, setFormData] = useState({
 		fullName: "",
 		email: "",
 		password: "",
-		inviteCode: ""
+		confirmPassword: "",
+		verificationCode: ""
 	})
 
 	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setFormData({ ...formData, [e.target.name]: e.target.value })
 	}
 
-	const handleAuth = async (e: React.FormEvent) => {
+	const handleSignup = async (e: React.FormEvent) => {
 		e.preventDefault()
 		setIsLoading(true)
+		setErrorMessage("")
+
+		// Validate passwords match
+		if (formData.password !== formData.confirmPassword) {
+			setErrorMessage("Passwords do not match")
+			setIsLoading(false)
+			return
+		}
 
 		try {
-			const endpoint = activeTab === "signup" ? "/register" : "/login"
-			const body = activeTab === "signup"
-				? {
-					email: formData.email,
-					password: formData.password,
-					fullName: formData.fullName,
-					inviteCode: formData.inviteCode
-				}
-				: {
-					email: formData.email,
-					password: formData.password
-				}
-
-			const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
+			const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/register`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body)
+				body: JSON.stringify({
+					email: formData.email,
+					password: formData.password,
+					fullName: formData.fullName
+				})
+			})
+
+			const data = await res.json()
+
+			if (!res.ok) {
+				// Not registered in Google Sheet
+				if (data.status === "not_registered") {
+					setErrorMessage(data.message)
+					setShowErrorModal(true)
+				} else {
+					throw new Error(data.error || "Sign up failed")
+				}
+			} else {
+				// Verification code sent
+				setPendingEmail(formData.email)
+				setSignupStep("verification")
+				setFormData({ ...formData, verificationCode: "" })
+			}
+		} catch (err: any) {
+			setErrorMessage(err.message)
+			setShowErrorModal(true)
+		} finally {
+			setIsLoading(false)
+		}
+	}
+
+	const handleVerifyEmail = async (e: React.FormEvent) => {
+		e.preventDefault()
+		setIsLoading(true)
+		setErrorMessage("")
+
+		try {
+			const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/verify-email`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					email: pendingEmail,
+					code: formData.verificationCode,
+					password: formData.password,
+					fullName: formData.fullName
+				})
+			})
+
+			const data = await res.json()
+
+			if (!res.ok) {
+				throw new Error(data.error || "Verification failed")
+			}
+
+			// Success! Store token and redirect
+			localStorage.setItem("token", data.token)
+			localStorage.setItem("user", JSON.stringify(data.user))
+			alert("Account created successfully! Welcome!")
+			setActiveTab("signin")
+			setSignupStep("form")
+			setFormData({ fullName: "", email: "", password: "", confirmPassword: "", verificationCode: "" })
+			router.push("/dashboard")
+		} catch (err: any) {
+			setErrorMessage(err.message)
+		} finally {
+			setIsLoading(false)
+		}
+	}
+
+	const handleSignin = async (e: React.FormEvent) => {
+		e.preventDefault()
+		setIsLoading(true)
+		setErrorMessage("")
+
+		try {
+			const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					email: formData.email,
+					password: formData.password
+				})
 			})
 
 			const data = await res.json()
 			if (!res.ok) throw new Error(data.error || "Authentication failed")
 
-			if (activeTab === "signup") {
-				alert("Account Created! Please Sign In.")
-				setActiveTab("signin")
-			} else {
-				localStorage.setItem("token", data.token)
-				localStorage.setItem("user", JSON.stringify(data.user))
-				router.push("/dashboard")
-			}
+			localStorage.setItem("token", data.token)
+			localStorage.setItem("user", JSON.stringify(data.user))
+			router.push("/dashboard")
 		} catch (err: any) {
-			alert(err.message)
+			setErrorMessage(err.message)
 		} finally {
 			setIsLoading(false)
 		}
 	}
+
+	const handleAuth = activeTab === "signin" ? handleSignin : handleSignup
 
 	return (
 		<div className="relative min-h-screen w-full overflow-hidden bg-brand-dark">
@@ -132,122 +213,247 @@ export default function AuthPage() {
 								{activeTab === "signin" ? "Welcome Back" : "Create Account"}
 							</h2>
 							<p className="mt-2 text-white/60">
-								{activeTab === "signin" ? "Sign in to your account" : "Join our community today"}
+								{activeTab === "signin" 
+									? "Sign in to your account" 
+									: signupStep === "verification" 
+										? "Enter the code sent to your email"
+										: "Join our community today"}
 							</p>
 						</div>
 
 						<div className="bg-brand-card/20 border border-white/40 rounded-2xl p-6 backdrop-blur-sm">
-							{/* Toggle */}
-						<div className="relative grid grid-cols-2 gap-2 mb-8 bg-black p-1 rounded-lg">
-							{/* Sliding background */}
-							<div
-								className="absolute inset-y-0 left-0 w-1/2 bg-brand-purple rounded-md transition-transform duration-300"
-								style={{
-									transform: activeTab === "signup" ? "translateX(100%)" : "translateX(0)"
-								}}
-							/>
-							<button
-								onClick={() => setActiveTab("signin")}
-								className={`relative z-10 text-sm font-medium py-2 rounded-md transition-colors duration-300 cursor-pointer ${
-									activeTab === "signin"
-										? "text-white"
-										: "text-white/60 hover:text-white"
-								}`}
-							>
-								Sign In
-							</button>
-							<button
-								onClick={() => setActiveTab("signup")}
-							className={`relative z-10 text-sm font-medium py-2 rounded-md transition-colors duration-300 cursor-pointer ${
-									activeTab === "signup"
-										? "text-white"
-										: "text-white/60 hover:text-white"
-								}`}
-							>
-								Sign Up
-							</button>
-							</div>
-
-							<form className="space-y-5" onSubmit={handleAuth}>
-								{activeTab === "signup" && (
-									<div className="space-y-2">
-										<Label>Full Name</Label>
-										<Input
-											name="fullName"
-											value={formData.fullName}
-											onChange={handleChange}
-											placeholder="Enter your full name"
-                                            className="bg-black"
-											icon={<User className="w-4 h-4" />}
-										/>
-									</div>
-								)}
-
-								<div className="space-y-2">
-									<Label>Email</Label>
-									<Input
-										name="email"
-										type="email"
-										value={formData.email}
-										onChange={handleChange}
-										placeholder="Enter your email"
-                                        className="bg-black"
-										icon={<Mail className="w-4 h-4" />}
+							{/* Toggle (only show on signin/signup form, not verification/error) */}
+							{(activeTab === "signin" || (activeTab === "signup" && signupStep === "form")) && (
+								<div className="relative grid grid-cols-2 gap-2 mb-8 bg-black p-1 rounded-lg">
+									{/* Sliding background */}
+									<div
+										className="absolute inset-y-0 left-0 w-1/2 bg-brand-purple rounded-md transition-transform duration-300"
+										style={{
+											transform: activeTab === "signup" ? "translateX(100%)" : "translateX(0)"
+										}}
 									/>
+									<button
+										onClick={() => {
+											setActiveTab("signin")
+											setErrorMessage("")
+											setSignupStep("form")
+										}}
+										className={`relative z-10 text-sm font-medium py-2 rounded-md transition-colors duration-300 cursor-pointer ${
+											activeTab === "signin"
+												? "text-white"
+												: "text-white/60 hover:text-white"
+										}`}
+									>
+										Sign In
+									</button>
+									<button
+										onClick={() => {
+											setActiveTab("signup")
+											setErrorMessage("")
+											setSignupStep("form")
+										}}
+										className={`relative z-10 text-sm font-medium py-2 rounded-md transition-colors duration-300 cursor-pointer ${
+											activeTab === "signup"
+												? "text-white"
+												: "text-white/60 hover:text-white"
+										}`}
+									>
+										Sign Up
+									</button>
 								</div>
+							)}
 
-								<div className="space-y-2">
-									<Label>Password</Label>
-									<div className="relative">
-										<Input
-											name="password"
-											type={showPassword ? "text" : "password"}
-											value={formData.password}
-											onChange={handleChange}
-											placeholder="Enter your password"
-											className="pr-10 bg-black"
-											icon={<Lock className="w-4 h-4" />}
-										/>
-										<button
-											type="button"
-											onClick={() => setShowPassword(!showPassword)}
-										className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
-										>
-											{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-										</button>
-									</div>
-								</div>
-
-								{activeTab === "signup" && (
+							{/* Verification Code Input */}
+							{signupStep === "verification" && (
+								<form className="space-y-5" onSubmit={handleVerifyEmail}>
 									<div className="space-y-2">
-										<Label>Service Access Code</Label>
+										<Label>Verification Code</Label>
 										<Input
-											name="inviteCode"
-											value={formData.inviteCode}
+											name="verificationCode"
+											value={formData.verificationCode}
 											onChange={handleChange}
-											placeholder="ENTER YOUR ACCESS CODE"
-											className="tracking-wider uppercase bg-black"
-											icon={<Key className="w-4 h-4" />}
+											placeholder="Enter 6-digit code"
+											maxLength={6}
+											className="bg-black text-center tracking-widest text-2xl"
+										/>
+										<p className="text-xs text-white/50">
+											Code sent to <span className="text-white/70">{pendingEmail}</span>
+										</p>
+									</div>
+
+									{errorMessage && (
+										<div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
+											<p className="text-red-300 text-sm">{errorMessage}</p>
+										</div>
+									)}
+
+									<Button
+										type="submit"
+										disabled={isLoading || formData.verificationCode.length !== 6}
+										className="w-full bg-brand-purple hover:bg-brand-purple/90 h-12"
+									>
+										{isLoading ? "Verifying..." : "Verify & Create Account"}
+									</Button>
+
+									<Button
+										type="button"
+										onClick={() => {
+											setSignupStep("form")
+											setErrorMessage("")
+										}}
+										variant="outline"
+										className="w-full border-white/20 text-white hover:bg-white/5"
+									>
+										Back to Sign Up
+									</Button>
+								</form>
+							)}
+
+							{/* Sign In / Sign Up Form */}
+							{(activeTab === "signin" || (activeTab === "signup" && signupStep === "form")) && (
+								<form className="space-y-5" onSubmit={handleAuth}>
+									{activeTab === "signup" && (
+										<div className="space-y-2">
+											<Label>Full Name</Label>
+											<Input
+												name="fullName"
+												value={formData.fullName}
+												onChange={handleChange}
+												placeholder="Enter your full name"
+                                            	className="bg-black"
+												icon={<User className="w-4 h-4" />}
+											/>
+										</div>
+									)}
+
+									<div className="space-y-2">
+										<Label>Email</Label>
+										<Input
+											name="email"
+											type="email"
+											value={formData.email}
+											onChange={handleChange}
+											placeholder="Enter your email"
+                                        	className="bg-black"
+											icon={<Mail className="w-4 h-4" />}
 										/>
 									</div>
-								)}
 
-								<Button
-									type="submit"
-									disabled={isLoading}
-									className="w-full bg-brand-purple hover:bg-brand-purple/90 h-12"
-								>
-									{isLoading
-										? "Processing..."
-										: activeTab === "signin"
-											? "Sign In"
-											: "Create Account"}
-								</Button>
-							</form>
+									<div className="space-y-2">
+										<Label>Password</Label>
+										<div className="relative">
+											<Input
+												name="password"
+												type={showPassword ? "text" : "password"}
+												value={formData.password}
+												onChange={handleChange}
+												placeholder="Enter your password"
+												className="pr-10 bg-black"
+												icon={<Lock className="w-4 h-4" />}
+											/>
+											<button
+												type="button"
+												onClick={() => setShowPassword(!showPassword)}
+											className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
+											>
+												{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+											</button>
+										</div>
+									</div>
+
+									{activeTab === "signup" && (
+										<div className="space-y-2">
+											<Label>Confirm Password</Label>
+											<div className="relative">
+												<Input
+													name="confirmPassword"
+													type={showConfirmPassword ? "text" : "password"}
+													value={formData.confirmPassword}
+													onChange={handleChange}
+													placeholder="Confirm your password"
+													className="pr-10 bg-black"
+													icon={<Lock className="w-4 h-4" />}
+												/>
+												<button
+													type="button"
+													onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+												className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
+												>
+													{showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+												</button>
+											</div>
+										</div>
+									)}
+
+									{errorMessage && (
+										<div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
+											<p className="text-red-300 text-sm">{errorMessage}</p>
+										</div>
+									)}
+
+									<Button
+										type="submit"
+										disabled={isLoading}
+										className="w-full bg-brand-purple hover:bg-brand-purple/90 h-12"
+									>
+										{isLoading
+											? "Processing..."
+											: activeTab === "signin"
+												? "Sign In"
+												: "Continue"}
+									</Button>
+								</form>
+							)}
 						</div>
 					</div>
 				</div>
 			</div>
+
+			{/* Error Modal - Not Registered */}
+			{showErrorModal && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+					<div className="relative w-full max-w-md mx-4 bg-brand-dark border border-white/20 rounded-2xl p-8 space-y-6">
+						{/* Header */}
+						<div className="text-center space-y-3">
+							<div className="flex justify-center">
+								<div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/20 border border-red-500/50">
+									<AlertCircle className="w-6 h-6 text-red-500" />
+								</div>
+							</div>
+							<h2 className="text-2xl font-semibold text-white">Not a Registered Member</h2>
+						</div>
+
+						{/* Message */}
+						<div className="space-y-3">
+							<p className="text-white/80 text-center">
+								{errorMessage || "We couldn't find your email in our registered members list."}
+							</p>
+							<p className="text-white/60 text-sm text-center">
+								To gain access, please reach out to the protocol team at your local or online church.
+							</p>
+						</div>
+
+						{/* Contact Info */}
+						<div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2">
+							<p className="text-xs uppercase tracking-wide text-white/40">Protocol Team</p>
+							<p className="text-white font-medium break-all">kingobiomaeze2020@gmail.com</p>
+						</div>
+
+						{/* Button */}
+						<Button
+							onClick={() => {
+								setShowErrorModal(false)
+								setErrorMessage("")
+								setFormData({ fullName: "", email: "", password: "", confirmPassword: "", verificationCode: "" })
+								setActiveTab("signin")
+							}}
+							className="w-full bg-brand-purple hover:bg-brand-purple/90 h-12"
+						>
+							Back to Sign In
+						</Button>
+					</div>
+				</div>
+			)}
 		</div>
 	)
 }
