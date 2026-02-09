@@ -75,3 +75,16 @@ model ChatMessage {
   event     Event   @relation(fields: [eventId], references: [id])
 }
 
+// 6. Email Verification (For Signup Flow)
+model VerificationCode {
+  id        String   @id @default(uuid())
+  email     String
+  code      String   // 6-digit code (hashed in production)
+  createdAt DateTime @default(now())
+  expiresAt DateTime // Calculated as createdAt + VERIFICATION_CODE_EXPIRES_IN
+  used      Boolean  @default(false)
+
+  @@index([email])
+  @@index([expiresAt])
+}
+
