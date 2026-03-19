@@ -16,8 +16,9 @@ jobs:
 
       - name: Push to Personal Repo
         env:
-          MY_TOKEN: ${{ secrets.PERSONAL_REPO_TOKEN }}
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_REPO_TOKEN }}
         run: |
-          # Use the variable in the URL
-          git remote add personal "https://x-access-token:$MY_TOKEN@github.com/kingigbozuruike/dgclive.git"
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git remote add personal "https://$PERSONAL_TOKEN@github.com/kingigbozuruike/dgclive.git"
           git push personal main --force
