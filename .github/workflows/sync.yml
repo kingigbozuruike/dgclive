@@ -15,6 +15,9 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Personal Repo
+        env:
+          MY_TOKEN: ${{ secrets.PERSONAL_REPO_TOKEN }}
         run: |
-          REMOTE_URL="https://x-access-token:${{ secrets.PERSONAL_REPO_TOKEN }}@github.com/kingigbozuruike/dgclive.git"
-          git push --force "$REMOTE_URL" main
+          # Use the variable in the URL
+          git remote add personal "https://x-access-token:$MY_TOKEN@github.com/kingigbozuruike/dgclive.git"
+          git push personal main --force
