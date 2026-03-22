@@ -14,16 +14,23 @@ export const getNotifications = async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Handle query params that can be string | string[]
-    const limitParam = Array.isArray(req.query.limit) 
-      ? req.query.limit[0] 
-      : (req.query.limit as string);
-    const offsetParam = Array.isArray(req.query.offset) 
-      ? req.query.offset[0] 
-      : (req.query.offset as string);
+    // Safely extract string values from query params
+    const getLimitValue = (): string => {
+      const val = req.query.limit;
+      if (typeof val === 'string') return val;
+      if (Array.isArray(val)) return val[0] || '10';
+      return '10';
+    };
 
-    const limit = Math.min(parseInt(limitParam) || 10, 50); // Max 50
-    const offset = parseInt(offsetParam) || 0;
+    const getOffsetValue = (): string => {
+      const val = req.query.offset;
+      if (typeof val === 'string') return val;
+      if (Array.isArray(val)) return val[0] || '0';
+      return '0';
+    };
+
+    const limit = Math.min(parseInt(getLimitValue()) || 10, 50); // Max 50
+    const offset = parseInt(getOffsetValue()) || 0;
 
     // Fetch unread notifications, ordered by most recent first
     const notifications = await prisma.notification.findMany({
@@ -65,9 +72,16 @@ export const getNotifications = async (req: AuthRequest, res: Response) => {
 export const markNotificationAsRead = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.id;
-    const notificationId = Array.isArray(req.params.notificationId) 
-      ? req.params.notificationId[0] 
-      : req.params.notificationId;
+    
+    // Safely extract notificationId from params
+    const getNotificationId = (): string => {
+      const val = req.params.notificationId;
+      if (typeof val === 'string') return val;
+      if (Array.isArray(val)) return val[0] || '';
+      return '';
+    };
+
+    const notificationId = getNotificationId();
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
