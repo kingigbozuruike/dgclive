@@ -7,10 +7,14 @@ import { prisma } from "./lib/prisma";
 import routes from "./routes";
 
 const app = express();
+const corsOrigins = process.env.CORS_ORIGINS 
+	? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+	: ['http://localhost:3000'];
+
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
 	cors: {
-		origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
+		origin: corsOrigins,
 		credentials: true,
 	},
 	transports: ['websocket', 'polling'],
@@ -18,7 +22,7 @@ const io = new SocketIOServer(httpServer, {
 
 // 1. Security & Configuration
 app.use(cors({
-	origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
+	origin: corsOrigins,
 	credentials: true // Allow cookies/headers if needed
 }));
 app.use(express.json());
