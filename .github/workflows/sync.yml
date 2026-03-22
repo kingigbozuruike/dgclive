@@ -14,11 +14,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
       - name: Push to Personal Repo
         env:
-          PERSONAL_TOKEN: ${{ secrets.PERSONAL_REPO_TOKEN }}
+          GIT_SSH_COMMAND: "ssh -i ~/.ssh/deploy_key"
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
-          git remote add personal "https://kingigbozuruike:${PERSONAL_TOKEN}@github.com/kingigbozuruike/dgclive.git"
+          git remote add personal "git@github.com:kingigbozuruike/dgclive.git"
           git push personal main --force
